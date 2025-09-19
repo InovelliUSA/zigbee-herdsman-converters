@@ -2027,15 +2027,26 @@ const fzLocal = {
                 if (msg.type === "readResponse") {
                     return Object.keys(msg.data).reduce((p, c) => {
                         const key = splitValuesByEndpoint ? `${c}_${msg.endpoint.ID}` : c;
-                        if (attributes[key] && attributes[key].displayType === "enum") {
+                        const def = attributes[key];
+                        let raw = msg.data[c];
+                        // Restore 0xFF/0xFFFF/0xFFFFFFFF when z2m turned them into null
+                        if (Number.isNaN(raw) && def && def.dataType === Zcl.DataType.UINT8 &&
+                            (def.max === 255 || (def.values && Object.values(def.values).includes(255)))) {
+                          raw = 255;
+                        }
+                        // If device returned boolean, normalize to 0/1 for enum mapping
+                        if (typeof raw === "boolean") raw = raw ? 1 : 0;
+                        if (attributes[key] && attributes[key].displayType === "enum" && attributes[key].values) {
+                            const label = Object.keys(attributes[key].values)
+                              .find((k) => attributes[key].values[k] === raw);
                             return {
                                 // biome-ignore lint/performance/noAccumulatingSpread: ignored using `--suppress`
                                 ...p,
-                                [key]: Object.keys(attributes[key].values).find((k) => attributes[key].values[k] === msg.data[c]),
+                                [key]: label ?? raw, // fall back to raw if not found
                             };
                         }
                         // biome-ignore lint/performance/noAccumulatingSpread: ignored using `--suppress`
-                        return {...p, [key]: msg.data[c]};
+                        return { ...p, [key]: raw };
                     }, {});
                 }
                 return msg.data;
